@@ -33,7 +33,7 @@ type Provider interface {
 // LanguageModel is one model at one endpoint, ready to answer a single turn.
 type LanguageModel interface {
 	Generate(ctx context.Context, c Call) (*Response, error)
-	Provider() string // "gemini" | "openai" | "anthropic"
+	Provider() string // "gemini" | "openai" | "anthropic" | "xai"
 	Model() string    // resolved model id — shown in the AI banner
 	Endpoint() string // base URL we POST to — powers the consent prompt
 }
@@ -82,10 +82,10 @@ func (w wireError) message() string {
 	return strings.TrimSpace(string(w.Error))
 }
 
-// Local reports whether a base URL points at this machine. `pgbot explain` is the
-// only command that can send data off the box — when it can't (Ollama, vLLM, LM
-// Studio on localhost), the consent prompt should say so rather than warn about a
-// disclosure that isn't happening.
+// Local reports whether a base URL points at this machine. `pgbot explain` and
+// `pgbot ask` are the only commands that can send data off the box — when they
+// can't (Ollama, vLLM, LM Studio on localhost), the consent prompt should say so
+// rather than warn about a disclosure that isn't happening.
 func Local(endpoint string) bool {
 	u, err := url.Parse(endpoint)
 	if err != nil {

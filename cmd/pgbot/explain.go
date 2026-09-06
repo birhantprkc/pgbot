@@ -143,6 +143,13 @@ func confirmDisclosure(cmdName string, llm ai.LanguageModel, yes bool) bool {
 	}
 	fmt.Fprintf(os.Stderr, "%s: this sends the PII-free findings (same as `inspect --json`) to %s at %s (model %s).\n",
 		cmdName, llm.Provider(), ai.Host(llm.Endpoint()), llm.Model())
+	if strings.HasPrefix(strings.ToLower(llm.Endpoint()), "http://") {
+		// Not local (that returned above), and not TLS: the API key and the
+		// findings cross the network in the clear. Say so; it is usually a LAN
+		// address copied from a "local model" recipe.
+		fmt.Fprintf(os.Stderr, "%s: WARNING — %s is plain http, so the key and the findings travel unencrypted.\n",
+			cmdName, ai.Host(llm.Endpoint()))
+	}
 	if yes || !isInteractive() {
 		return true
 	}

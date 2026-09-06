@@ -112,3 +112,33 @@ func TestAnthropic_emptyContent(t *testing.T) {
 		t.Error("empty content should be an error, not an empty success")
 	}
 }
+
+// The 8192 hint the explain layer passes suits a plain chat model; Anthropic's
+// max_tokens also has to cover the thinking that current models do by default,
+// so the provider floors it rather than forwarding the hint as-is.
+func TestAnthropic_maxTokensFloor(t *testing.T) {
+	var sent float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		sent, _ = raw["max_tokens"].(float64)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"content":     []map[string]string{{"type": "text", "text": "ok"}},
+			"stop_reason": "end_turn",
+		})
+	}))
+	defer srv.Close()
+
+	if _, err := anthropicFor(srv.URL, "k", "m1").Generate(context.Background(), Call{Prompt: "p", MaxOutputTokens: i64(8192)}); err != nil {
+		t.Fatal(err)
+	}
+	if int(sent) != anthropicTokenFloor {
+		t.Errorf("max_tokens = %v with an 8192 hint; want the %d floor", sent, anthropicTokenFloor)
+	}
+	if _, err := anthropicFor(srv.URL, "k", "m1").Generate(context.Background(), Call{Prompt: "p", MaxOutputTokens: i64(40000)}); err != nil {
+		t.Fatal(err)
+	}
+	if int(sent) != 40000 {
+		t.Errorf("max_tokens = %v with a 40000 hint; want the hint to win above the floor", sent)
+	}
+}

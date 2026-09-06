@@ -63,8 +63,11 @@ and (only if you want the optional `ask`/`explain` AI layer) one model key:
 export DATABASE_URL="postgres://pgbot_ro:…@host:5432/db?sslmode=require"
 
 # optional, for `pgbot ask` / `pgbot explain` — one of:
-export OPENAI_API_KEY=sk-…        # → OpenAI (gpt-4o-mini by default)
+export OPENAI_API_KEY=sk-…        # → OpenAI (gpt-5.6-terra by default)
 export GEMINI_API_KEY=…           # → Google Gemini (AI Studio key)
+export ANTHROPIC_API_KEY=…        # → Anthropic (claude-opus-5 by default)
+export XAI_API_KEY=…              # → xAI (grok-4.6 by default)
+# …or any OpenAI-compatible endpoint, local ones included — see "explain — optional AI layer"
 ```
 
 Everything else — `inspect`, `queries`, `indexes`, MCP, CI — is fully
@@ -428,11 +431,15 @@ one SSH connection serves the whole run. Raise `--timeout` if the link is slow.
 | `XDG_STATE_HOME` | Where the baseline store lives; defaults to `~/.local/state`. |
 | `PGBOT_SSH_TUNNEL` | SSH jump host used when `--ssh-tunnel` isn't passed (`[user@]host[:port]`, or a `~/.ssh/config` alias). |
 | `PGBOT_CONFIG` | Path to `.pgbot.toml` (otherwise discovered from cwd upward, then `$XDG_CONFIG_HOME`). |
-| `OPENAI_API_KEY` | Enables `ask` / `explain` via OpenAI. Keys are never accepted as flags. |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | Enables `ask` / `explain` via OpenAI or OpenRouter. Keys are never accepted as flags. |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Enables `ask` / `explain` via Google Gemini. |
-| `PGBOT_AI_PROVIDER` | Forces `openai` or `gemini` when both keys are set. |
-| `PGBOT_OPENAI_MODEL` / `PGBOT_OPENAI_URL` | Model/endpoint override (any OpenAI-compatible endpoint works). |
-| `PGBOT_GEMINI_MODEL` / `PGBOT_GEMINI_URL` | Model/endpoint override for Gemini. |
+| `ANTHROPIC_API_KEY` | Enables `ask` / `explain` via Anthropic. |
+| `XAI_API_KEY` / `GROK_API_KEY` | Enables `ask` / `explain` via xAI. |
+| `PGBOT_AI_PROVIDER` | `gemini`, `anthropic`, `openai`, or `xai` — picks one when several keys are set (auto-detection tries OpenAI first). |
+| `PGBOT_AI_MODEL` / `PGBOT_AI_BASE_URL` / `PGBOT_AI_API_KEY` | Model, endpoint, and key override for whichever provider is selected; the way to reach an OpenAI-compatible service (OpenRouter, Groq, Ollama, vLLM, …). |
+| `PGBOT_AI_REASONING_EFFORT` | `none`, `low`, `medium`, `high`, `xhigh`, or `max` for reasoning models (OpenAI's default here is `xhigh`). |
+| `PGBOT_OPENAI_MODEL` / `PGBOT_OPENAI_URL` | Still honored: OpenAI-scoped model/endpoint override. |
+| `PGBOT_GEMINI_MODEL` / `PGBOT_GEMINI_URL` | Still honored: Gemini-scoped model/endpoint override. |
 | `PGBOT_REQUIRE_SIGNATURE` | `install.sh` only: hard-fail unless the cosign signature verifies. |
 
 ## Connecting to managed providers
@@ -560,7 +567,7 @@ pgbot vacuum <connection-string>    # autovacuum health per table — dead tuple
 pgbot tune <connection-string>      # config-tuning recommendations from the workload
 pgbot explain <connection-string>   # inspect, then have an AI explain the findings
 pgbot ask "why is it slow?"         # AI answer grounded on the findings ($DATABASE_URL)
-  --yes                  skip the "this sends data to Google" confirmation
+  --yes                  skip the data-disclosure confirmation prompt
 pgbot mcp                           # run as an MCP server over stdio (for AI agents)
 ```
 
@@ -1118,7 +1125,10 @@ package is scoped. Use `npx @pgbot/cli`.
 Nothing leaves the machine unless you ask for it: every command except the AI
 layer is entirely local. The only commands that make an outbound call are `pgbot
 explain` and `pgbot ask`, which send the same PII-free Context to your configured
-model — OpenAI or Gemini (and say so, with a confirmation prompt).
+model — Gemini, Anthropic, OpenAI, xAI, or an OpenAI-compatible endpoint — and
+say so, naming the provider, host, and model, with a confirmation prompt. A
+local endpoint (Ollama, vLLM, LM Studio on this machine) is identified as local
+and sends nothing off the box.
 
 That Context is PII-free by construction: `pg_stat_statements` text is normalized
 (`$1` placeholders), and the one raw-SQL source (`pg_stat_activity` for blocking

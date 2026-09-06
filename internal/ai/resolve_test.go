@@ -100,6 +100,7 @@ func TestResolve_explicitProviderBeatsAutodetect(t *testing.T) {
 
 func TestResolve_modelAndURLOverrides(t *testing.T) {
 	clearEnv(t)
+	t.Setenv("PGBOT_AI_PROVIDER", "gemini")
 	t.Setenv("GEMINI_API_KEY", "k")
 	t.Setenv("PGBOT_AI_MODEL", "gemini-3-pro")
 	t.Setenv("PGBOT_AI_BASE_URL", "https://proxy.example/v1/")
@@ -199,5 +200,78 @@ func TestLocalAndHost(t *testing.T) {
 	}
 	if got := Host("https://api.anthropic.com/v1/messages"); got != "api.anthropic.com" {
 		t.Errorf("Host should be host[:port] only, got %q", got)
+	}
+}
+
+// An explicit alias names its endpoint: openrouter goes to OpenRouter even when
+// the key arrives as the generic PGBOT_AI_API_KEY (the raw-variable check alone
+// sent it to api.openai.com), ollama goes to the local default with no key, and
+// the generic openai-compatible alias has no endpoint to guess.
+func TestResolve_explicitAliasesPickTheirEndpoint(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("PGBOT_AI_PROVIDER", "openrouter")
+	t.Setenv("PGBOT_AI_API_KEY", "sk-or-…")
+	m, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Endpoint() != defaultOpenRouterURL {
+		t.Errorf("openrouter with PGBOT_AI_API_KEY: endpoint = %q, want %q", m.Endpoint(), defaultOpenRouterURL)
+	}
+
+	clearEnv(t)
+	t.Setenv("PGBOT_AI_PROVIDER", "ollama")
+	m, err = Resolve()
+	if err != nil {
+		t.Fatalf("ollama with no key and no base URL: %v", err)
+	}
+	if m.Endpoint() != defaultOllamaURL {
+		t.Errorf("ollama: endpoint = %q, want %q", m.Endpoint(), defaultOllamaURL)
+	}
+
+	clearEnv(t)
+	t.Setenv("PGBOT_AI_PROVIDER", "openai-compatible")
+	t.Setenv("PGBOT_AI_API_KEY", "k")
+	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "PGBOT_AI_BASE_URL") {
+		t.Errorf("openai-compatible without a base URL should ask for PGBOT_AI_BASE_URL, got: %v", err)
+	}
+
+	clearEnv(t)
+	t.Setenv("PGBOT_AI_PROVIDER", "openai")
+	t.Setenv("OPENAI_API_KEY", "k")
+	m, err = Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Endpoint() != defaultOpenAIURL {
+		t.Errorf("explicit openai: endpoint = %q, want %q", m.Endpoint(), defaultOpenAIURL)
+	}
+}
+
+// A custom remote endpoint must come with a named provider. Auto-detecting one
+// from an ambient vendor key would send that key — say the ANTHROPIC_API_KEY
+// another tool left in the shell — to whatever host PGBOT_AI_BASE_URL names,
+// with Anthropic's request format, and --yes would never show it.
+func TestResolve_remoteBaseURLNeedsExplicitProvider(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-…")
+	t.Setenv("PGBOT_AI_BASE_URL", "https://gateway.example/v1")
+	_, err := Resolve()
+	if err == nil {
+		t.Fatal("remote PGBOT_AI_BASE_URL with no PGBOT_AI_PROVIDER resolved a model; want an error")
+	}
+	if !strings.Contains(err.Error(), "PGBOT_AI_PROVIDER") || strings.Contains(err.Error(), "sk-ant") {
+		t.Errorf("error should ask for PGBOT_AI_PROVIDER and never echo a key, got: %v", err)
+	}
+
+	// Naming it makes the same setup work, and the local case never needed it.
+	t.Setenv("PGBOT_AI_PROVIDER", "anthropic")
+	if m, err := Resolve(); err != nil || m.Endpoint() != "https://gateway.example/v1" {
+		t.Errorf("named provider with a remote base URL: model=%v err=%v", m, err)
+	}
+	clearEnv(t)
+	t.Setenv("PGBOT_AI_BASE_URL", "http://127.0.0.1:8000/v1")
+	if _, err := Resolve(); err != nil {
+		t.Errorf("local PGBOT_AI_BASE_URL alone should still resolve: %v", err)
 	}
 }

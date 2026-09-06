@@ -190,3 +190,56 @@ func TestResolve_openAIKeyStillUsesChatCompletions(t *testing.T) {
 		t.Errorf("auto-detected OpenAI must use the chat/completions provider, got %T", m)
 	}
 }
+
+// An explicit xai/grok must not borrow the OpenAI key. With PGBOT_AI_BASE_URL
+// also set, the fallback would have sent OpenAI's key to api.x.ai — a key handed
+// to a vendor it was not issued for. Only the endpoint-shaped `responses` alias
+// means "the Responses API at OpenAI".
+func TestResolve_explicitXAIDoesNotBorrowOpenAIKey(t *testing.T) {
+	for _, name := range []string{"xai", "grok"} {
+		clearEnv(t)
+		t.Setenv("PGBOT_AI_PROVIDER", name)
+		t.Setenv("OPENAI_API_KEY", "sk-openai")
+		t.Setenv("PGBOT_AI_BASE_URL", "https://api.x.ai/v1")
+		_, err := Resolve()
+		if err == nil {
+			t.Fatalf("PGBOT_AI_PROVIDER=%s with only OPENAI_API_KEY resolved a model; want a missing-key error", name)
+		}
+		if !strings.Contains(err.Error(), "XAI_API_KEY") {
+			t.Errorf("error should name the xAI key variable, got: %v", err)
+		}
+	}
+}
+
+// grok-4 and the gpt-5 family reason before answering, and max_output_tokens
+// covers that reasoning too; the 8192 hint that suits a plain chat model must be
+// floored here exactly as the /chat/completions path floors it.
+func TestResponses_maxOutputTokensFloor(t *testing.T) {
+	var sent float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&raw)
+		sent, _ = raw["max_output_tokens"].(float64)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "completed",
+			"output": []map[string]any{{"type": "message", "role": "assistant",
+				"content": []map[string]string{{"type": "output_text", "text": "ok"}}}},
+		})
+	}))
+	defer srv.Close()
+	p := &ResponsesProvider{APIKey: "k", BaseURL: srv.URL, HTTP: http.DefaultClient, Label: "xai"}
+	m, _ := p.LanguageModel(context.Background(), "grok-4.6")
+
+	if _, err := m.Generate(context.Background(), Call{Prompt: "p", MaxOutputTokens: i64(8192)}); err != nil {
+		t.Fatal(err)
+	}
+	if int(sent) != reasoningTokenFloor {
+		t.Errorf("max_output_tokens = %v with an 8192 hint; want the %d floor", sent, reasoningTokenFloor)
+	}
+	if _, err := m.Generate(context.Background(), Call{Prompt: "p", MaxOutputTokens: i64(50000)}); err != nil {
+		t.Fatal(err)
+	}
+	if int(sent) != 50000 {
+		t.Errorf("max_output_tokens = %v with a 50000 hint; want the hint to win above the floor", sent)
+	}
+}

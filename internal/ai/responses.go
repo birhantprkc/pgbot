@@ -99,12 +99,20 @@ type responsesResponse struct {
 // Generate sends one instructions + input turn and returns the model's text. No
 // retries — a failed explanation must not hang the CLI.
 func (m *responsesModel) Generate(ctx context.Context, c Call) (*Response, error) {
+	// Every model behind this API reasons before it answers (grok-4, OpenAI's
+	// gpt-5 family), and max_output_tokens covers that hidden reasoning as well
+	// as the visible text — the same floor the /chat/completions path applies to
+	// its reasoning models, for the same reason.
+	limit := int64(reasoningTokenFloor)
+	if c.MaxOutputTokens != nil && *c.MaxOutputTokens > limit {
+		limit = *c.MaxOutputTokens
+	}
 	reqBody := responsesRequest{
 		Model:           m.model,
 		Instructions:    c.System,
 		Input:           c.Prompt,
 		Store:           false,
-		MaxOutputTokens: c.MaxOutputTokens,
+		MaxOutputTokens: &limit,
 		Temperature:     c.Temperature,
 	}
 	if e := m.provider.ReasoningEffort; e != "" {

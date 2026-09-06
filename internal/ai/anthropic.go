@@ -17,6 +17,13 @@ const (
 	defaultAnthropicModel = "claude-opus-5"
 	defaultAnthropicURL   = "https://api.anthropic.com"
 	anthropicVersion      = "2023-06-01"
+
+	// max_tokens caps thinking and the visible answer together, and the current
+	// models think by default (Opus 5 runs adaptive thinking unless told not to).
+	// The 8192 hint that suits a plain chat model leaves too little headroom, so
+	// floor it — the same reasoning as reasoningTokenFloor on the OpenAI path. It
+	// is a cap, not a spend: a short answer costs the same either way.
+	anthropicTokenFloor = 16000
 )
 
 // AnthropicProvider talks to the Messages API.
@@ -51,7 +58,7 @@ type messagesRequest struct {
 	System string `json:"system,omitempty"`
 	// Required by the API, and it caps thinking + visible text together: current
 	// models think before they answer, so a tight value truncates the explanation
-	// mid-sentence. Same headroom, same reason, as the Gemini path.
+	// mid-sentence. Generate floors it at anthropicTokenFloor.
 	MaxTokens int                `json:"max_tokens"`
 	Messages  []anthropicMessage `json:"messages"`
 	// Deliberately no `temperature`: it is REMOVED on current models (Opus 5,
@@ -82,8 +89,8 @@ type messagesResponse struct {
 // Generate sends one system + user turn and returns the model's text. No retries
 // — a failed explanation must not hang the CLI.
 func (m *anthropicModel) Generate(ctx context.Context, c Call) (*Response, error) {
-	maxTokens := 8192
-	if c.MaxOutputTokens != nil {
+	maxTokens := anthropicTokenFloor
+	if c.MaxOutputTokens != nil && int(*c.MaxOutputTokens) > maxTokens {
 		maxTokens = int(*c.MaxOutputTokens)
 	}
 	buf, err := json.Marshal(messagesRequest{

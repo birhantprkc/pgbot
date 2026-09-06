@@ -28,6 +28,16 @@ import (
 func Resolve() (LanguageModel, error) {
 	name := strings.ToLower(envOr("PGBOT_AI_PROVIDER", ""))
 	if name == "" {
+		// A custom REMOTE endpoint with no provider named is ambiguous in the one
+		// way that matters: auto-detection would pick a wire format and a key
+		// from whatever vendor variable happens to be in the shell (an
+		// ANTHROPIC_API_KEY left over from another tool) and send that key to
+		// this host — silently, under --yes. A local endpoint keeps working
+		// unnamed: nothing leaves the machine, and /chat/completions is what
+		// every local server speaks.
+		if base := envOr("PGBOT_AI_BASE_URL", ""); base != "" && !Local(base) {
+			return nil, fmt.Errorf("PGBOT_AI_BASE_URL is set to %s but PGBOT_AI_PROVIDER is not — name the API that endpoint speaks (gemini, anthropic, openai, or xai) so the right key and request format go to it", Host(base))
+		}
 		var err error
 		if name, err = detectProvider(); err != nil {
 			return nil, err
@@ -72,7 +82,11 @@ func Resolve() (LanguageModel, error) {
 		if key == "" {
 			key = firstEnv("XAI_API_KEY", "GROK_API_KEY")
 		}
-		if key == "" && firstEnv("OPENAI_API_KEY") != "" {
+		// Only the endpoint-shaped alias `responses` falls back to the OpenAI key:
+		// with no xAI key it means "the Responses API at OpenAI". An explicit
+		// xai/grok never borrows it — with PGBOT_AI_BASE_URL also set that would
+		// send a key to a vendor it was not issued for.
+		if key == "" && name == "responses" && firstEnv("OPENAI_API_KEY") != "" {
 			key, label = firstEnv("OPENAI_API_KEY"), "openai"
 			if base == "" {
 				base = envOr("PGBOT_OPENAI_URL", defaultOpenAIURL)
@@ -100,10 +114,22 @@ func Resolve() (LanguageModel, error) {
 		}
 		if base == "" {
 			base = envOr("PGBOT_OPENAI_URL", "")
-			if base == "" {
+		}
+		if base == "" {
+			// The alias names the endpoint. Keying this off the raw key variables
+			// alone sent an OpenRouter key handed over as PGBOT_AI_API_KEY to
+			// api.openai.com, and pointed an explicit `ollama` at OpenAI.
+			switch name {
+			case "openrouter":
+				base = defaultOpenRouterURL
+			case "ollama":
+				base = defaultOllamaURL
+			case "openai-compatible":
+				return nil, fmt.Errorf("PGBOT_AI_PROVIDER=openai-compatible needs PGBOT_AI_BASE_URL — a generic service has no default endpoint")
+			default: // openai, or auto-detected from whichever key exists
 				base = defaultOpenAIURL
 				if os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") != "" {
-					base = "https://openrouter.ai/api/v1"
+					base = defaultOpenRouterURL
 				}
 			}
 		}
