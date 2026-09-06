@@ -15,21 +15,15 @@ const (
 	defaultXAIURL   = "https://api.x.ai/v1"
 )
 
-// ResponsesProvider speaks the Responses API (POST /responses) — the newer
-// surface both xAI and OpenAI prefer over /chat/completions. pgbot uses it for
-// xAI, where it is the documented primary interface.
-//
-// It is deliberately NOT the default for the OpenAI-compatible world: only
-// OpenAI and xAI implement /responses, while Ollama, vLLM, LM Studio, Groq,
-// Together, DeepSeek and Mistral implement only /chat/completions. This provider
-// is additive — OpenAIProvider stays the compatibility path.
+// ResponsesProvider speaks POST /responses for xAI, OpenAI, and Bedrock Mantle.
+// OpenAIProvider remains the /chat/completions compatibility path.
 type ResponsesProvider struct {
 	APIKey  string
 	BaseURL string
 	HTTP    *http.Client
 
 	// Label is the provider name shown in the consent prompt and AI banner
-	// ("xai", "openai") — the endpoint is shared, the vendor is not.
+	// ("xai", "openai", "bedrock") — the endpoint is shared, the vendor is not.
 	Label string
 
 	// ReasoningEffort is sent as reasoning.effort when set. Left empty by default
@@ -70,7 +64,7 @@ type responsesRequest struct {
 	// Store is explicitly false. The Responses API defaults it to TRUE, which
 	// retains the request server-side for later retrieval — a quiet downgrade of
 	// the disclosure `pgbot explain` asks the user to consent to. We send the
-	// findings once and keep nothing on the vendor's side.
+	// findings without enabling stored conversation state.
 	Store           bool          `json:"store"`
 	MaxOutputTokens *int64        `json:"max_output_tokens,omitempty"`
 	Temperature     *float64      `json:"temperature,omitempty"`
@@ -114,6 +108,9 @@ func (m *responsesModel) Generate(ctx context.Context, c Call) (*Response, error
 		Store:           false,
 		MaxOutputTokens: &limit,
 		Temperature:     c.Temperature,
+	}
+	if reasoningModel(m.model) {
+		reqBody.Temperature = nil
 	}
 	if e := m.provider.ReasoningEffort; e != "" {
 		reqBody.Reasoning = &reasoningCfg{Effort: e}

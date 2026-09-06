@@ -15,6 +15,14 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   alone is enough to pick a database. pgx's `ParseConfig` already reads
   `PGSERVICEFILE` (or the libpq default path); this just stops pgbot from
   erroring out before pgx gets a chance to.
+- **AWS Bedrock Mantle for `ask` and `explain`** (#35). Select
+  `PGBOT_AI_PROVIDER=bedrock` (alias `mantle`) to route OpenAI models through
+  Responses and Anthropic models through Messages. Authenticate with
+  `PGBOT_AI_API_KEY` / `AWS_BEARER_TOKEN_BEDROCK`, or use the AWS SDK credential
+  chain for profiles, SSO, and role credentials. IAM tokens are signed locally,
+  restricted to the configured regional Mantle HTTPS host, and never forwarded
+  through redirects. Adds the AWS SDK for credential resolution and signing;
+  inference continues to use the existing HTTP clients.
 
 ## [0.8.1] - 2026-09-06
 

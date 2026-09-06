@@ -10,12 +10,12 @@ import (
 )
 
 // Resolve builds the model to use from the environment. Keys come ONLY from the
-// environment — never a flag — so they can't leak into shell history or the
-// process list. That invariant is enforced here, once, for every provider.
+// environment (or the AWS credential chain for Bedrock), never a flag, so they
+// cannot leak into shell history or the process list.
 //
 // Precedence:
 //
-//	PGBOT_AI_PROVIDER          explicit: gemini | openai | anthropic | xai
+//	PGBOT_AI_PROVIDER          explicit: gemini | openai | anthropic | xai | bedrock
 //	                           otherwise auto-detected from whichever key is set,
 //	                           OpenAI first to preserve existing behavior
 //	PGBOT_AI_MODEL             model id (else the provider's default)
@@ -73,6 +73,12 @@ func Resolve() (LanguageModel, error) {
 			base = defaultAnthropicURL
 		}
 		p = &AnthropicProvider{APIKey: key, BaseURL: trimURL(base), HTTP: httpc}
+
+	case "bedrock", "mantle":
+		if key == "" {
+			key = firstEnv("AWS_BEARER_TOKEN_BEDROCK")
+		}
+		return bedrockModel(model, base, key, httpc)
 
 	case "xai", "grok", "responses":
 		// The Responses API, which xAI documents as its primary interface. Same
@@ -144,7 +150,7 @@ func Resolve() (LanguageModel, error) {
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown PGBOT_AI_PROVIDER %q (want gemini, openai, anthropic, or xai)", name)
+		return nil, fmt.Errorf("unknown PGBOT_AI_PROVIDER %q (want gemini, openai, anthropic, xai, responses, bedrock, or mantle)", name)
 	}
 
 	// A local endpoint (Ollama, vLLM, LM Studio) usually has no key at all, and

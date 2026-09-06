@@ -28,12 +28,18 @@ const (
 
 // AnthropicProvider talks to the Messages API.
 type AnthropicProvider struct {
+	Label   string
 	APIKey  string
 	BaseURL string
 	HTTP    *http.Client
 }
 
-func (p *AnthropicProvider) Name() string { return "anthropic" }
+func (p *AnthropicProvider) Name() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return "anthropic"
+}
 
 func (p *AnthropicProvider) LanguageModel(_ context.Context, modelID string) (LanguageModel, error) {
 	if modelID == "" {
@@ -47,7 +53,7 @@ type anthropicModel struct {
 	model    string
 }
 
-func (m *anthropicModel) Provider() string { return "anthropic" }
+func (m *anthropicModel) Provider() string { return m.provider.Name() }
 func (m *anthropicModel) Model() string    { return m.model }
 func (m *anthropicModel) Endpoint() string { return m.provider.BaseURL }
 

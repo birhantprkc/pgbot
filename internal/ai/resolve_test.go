@@ -13,6 +13,7 @@ func clearEnv(t *testing.T) {
 		"PGBOT_AI_PROVIDER", "PGBOT_AI_MODEL", "PGBOT_AI_BASE_URL", "PGBOT_AI_API_KEY",
 		"PGBOT_AI_REASONING_EFFORT", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY", "GROK_API_KEY",
+		"AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION", "AWS_DEFAULT_REGION",
 		"PGBOT_GEMINI_MODEL", "PGBOT_GEMINI_URL", "PGBOT_OPENAI_MODEL", "PGBOT_OPENAI_URL",
 	} {
 		t.Setenv(k, "")
@@ -180,7 +181,7 @@ func TestResolve_remoteEndpointRequiresKey(t *testing.T) {
 
 func TestResolve_unknownProvider(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "bedrock")
+	t.Setenv("PGBOT_AI_PROVIDER", "unknown-provider")
 	t.Setenv("PGBOT_AI_API_KEY", "k")
 	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Errorf("unknown provider should be rejected clearly, got %v", err)
