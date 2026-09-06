@@ -8,6 +8,20 @@ separately by `model.SchemaVersion` (currently 1.2.0).
 ## [Unreleased]
 
 ### Added
+- **Bring your own model: Gemini, Anthropic, OpenAI, xAI, or any
+  OpenAI-compatible endpoint for `explain` and `ask`** (#29, contributed by
+  @edwardsb). Pick one with `PGBOT_AI_PROVIDER` or let pgbot detect it from
+  whichever key is set (OpenAI first, as before); `PGBOT_AI_MODEL`,
+  `PGBOT_AI_BASE_URL`, `PGBOT_AI_API_KEY`, and `PGBOT_AI_REASONING_EFFORT`
+  override the rest, and the existing `PGBOT_OPENAI_*` / `PGBOT_GEMINI_*`
+  settings keep working. Anthropic speaks `/v1/messages` (default
+  `claude-opus-5`), xAI the Responses API (default `grok-4.6`, sent with
+  `store: false`); OpenRouter, Groq, Together, DeepSeek, Mistral, Ollama, vLLM,
+  and LM Studio go through `/chat/completions`. The consent prompt now names
+  the provider, host, and model; a local endpoint is identified as local and
+  needs no confirmation. Keys still come only from the environment, and every
+  provider is plain `net/http` — no new dependencies. The model call gets its
+  own three-minute budget instead of what is left of collection's.
 - **`--ssh-tunnel [user@]host[:port]` — reach a database through an SSH jump
   host** (#28, contributed by @DiegoDAF). A global flag (or `$PGBOT_SSH_TUNNEL`)
   for the RDS-in-a-VPC / Postgres-behind-a-bastion case. It is installed as
@@ -23,6 +37,11 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   `github.com/kevinburke/ssh_config` and `golang.org/x/crypto`.
 
 ### Changed
+- **The OpenAI default model is now `gpt-5.6-terra`** (was `gpt-4o-mini`), sent
+  as a reasoning model with `reasoning_effort` `xhigh` and a 32k completion
+  cap. An existing setup with only `OPENAI_API_KEY` picks this up without any
+  other change — set `PGBOT_OPENAI_MODEL` (or `PGBOT_AI_MODEL`) to keep the old
+  model, or `PGBOT_AI_REASONING_EFFORT=low` to keep the cost down.
 - **Builds with Go 1.26.** `golang.org/x/crypto` v0.56.0 — the first release
   clearing the advisories `govulncheck` reports against the SSH package — needs
   Go 1.26, so `go.mod` moves from 1.25.13 to 1.26.8. With the default
