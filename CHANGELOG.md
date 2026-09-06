@@ -15,14 +15,19 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   alone is enough to pick a database. pgx's `ParseConfig` already reads
   `PGSERVICEFILE` (or the libpq default path); this just stops pgbot from
   erroring out before pgx gets a chance to.
-- **AWS Bedrock Mantle for `ask` and `explain`** (#35). Select
-  `PGBOT_AI_PROVIDER=bedrock` (alias `mantle`) to route OpenAI models through
-  Responses and Anthropic models through Messages. Authenticate with
-  `PGBOT_AI_API_KEY` / `AWS_BEARER_TOKEN_BEDROCK`, or use the AWS SDK credential
-  chain for profiles, SSO, and role credentials. IAM tokens are signed locally,
-  restricted to the configured regional Mantle HTTPS host, and never forwarded
-  through redirects. Adds the AWS SDK for credential resolution and signing;
-  inference continues to use the existing HTTP clients.
+- **AWS Bedrock Mantle as an `explain` / `ask` provider** (#35, contributed by
+  @edwardsb). `PGBOT_AI_PROVIDER=bedrock` (alias `mantle`) routes `openai.*`
+  models through the Responses API and `anthropic.*` models through the
+  Messages API on `bedrock-mantle.<region>.api.aws`; the default is
+  `openai.gpt-5.6-terra`. Authenticate with `AWS_BEARER_TOKEN_BEDROCK` or with
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`, from
+  which pgbot mints Bedrock's short-lived bearer token itself — a hundred lines
+  of SigV4 over the standard library, pinned to AWS's reference generator by a
+  golden-signature test. No AWS SDK, no config files, no STS or metadata calls:
+  a profile or SSO login is exported with
+  `eval "$(aws configure export-credentials --format env)"`. Access keys only
+  ever go to the Mantle host for the configured region, and Bedrock requests
+  never follow redirects.
 
 ## [0.8.1] - 2026-09-06
 

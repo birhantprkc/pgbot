@@ -7,19 +7,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 func tokenQuery(t *testing.T, token string) url.Values {
 	t.Helper()
 	if !strings.HasPrefix(token, "bedrock-api-key-") {
-		t.Fatal("missing token prefix")
+		t.Fatalf("missing token prefix in %q", token)
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(token, "bedrock-api-key-"))
 	if err != nil {
@@ -37,23 +33,27 @@ func tokenQuery(t *testing.T, token string) url.Values {
 
 func TestBedrockToken(t *testing.T) {
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
-	creds := aws.Credentials{AccessKeyID: "AKIDEXAMPLE", SecretAccessKey: "dummy-secret", SessionToken: "session/+= token"}
-	token, err := bedrockToken(context.Background(), creds, "us-east-1", now)
+	creds := awsCredentials{AccessKeyID: "AKIDEXAMPLE", SecretAccessKey: "dummy-secret", SessionToken: "session/+= token"}
+	token, err := bedrockToken(creds, "us-east-1", now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := tokenQuery(t, token)
 	// Golden signature from AWS's Python aws-bedrock-token-generator with these
-	// dummy credentials, frozen timestamp, region, and 900-second expiry.
+	// dummy credentials, frozen timestamp, region, and 900-second expiry — the
+	// proof that the hand-rolled presigner matches the SDK it replaced.
 	if q.Get("X-Amz-Signature") != "c51d43f3459d73b462fc95dca8da87f70d1a65920d0bfd32f1d6761e47485a2f" {
-		t.Fatal("signature differs from AWS reference generator")
+		t.Fatalf("signature differs from AWS reference generator: %s", q.Get("X-Amz-Signature"))
 	}
 	if q.Get("Version") != "1" || q.Get("X-Amz-Expires") != "900" || q.Get("X-Amz-Security-Token") != creds.SessionToken {
 		t.Fatal("incorrect token envelope")
 	}
-	creds.CanExpire = true
+	if q.Get("X-Amz-Credential") != "AKIDEXAMPLE/20260905/us-east-1/bedrock/aws4_request" || q.Get("X-Amz-SignedHeaders") != "host" {
+		t.Fatal("incorrect credential scope")
+	}
+
 	creds.Expires = now.Add(90 * time.Second)
-	token, err = bedrockToken(context.Background(), creds, "us-east-1", now)
+	token, err = bedrockToken(creds, "us-east-1", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,17 +61,28 @@ func TestBedrockToken(t *testing.T) {
 		t.Fatal("token must not outlive credentials")
 	}
 	creds.Expires = now
-	if _, err := bedrockToken(context.Background(), creds, "us-east-1", now); err == nil {
+	if _, err := bedrockToken(creds, "us-east-1", now); err == nil {
 		t.Fatal("expired credentials accepted")
 	}
-	creds.CanExpire = false
+	creds.Expires = time.Time{}
 	creds.SessionToken = ""
-	token, err = bedrockToken(context.Background(), creds, "us-east-1", now)
+	token, err = bedrockToken(creds, "us-east-1", now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := tokenQuery(t, token)["X-Amz-Security-Token"]; exists {
 		t.Fatal("static credentials must omit session token")
+	}
+}
+
+// The canonical query must use RFC 3986 escaping, not net/url's form encoding:
+// a space is %20 and '+' is %2B, or the signature does not verify.
+func TestSigv4Escape(t *testing.T) {
+	if got := sigv4Escape("session/+= token~-_."); got != "session%2F%2B%3D%20token~-_." {
+		t.Fatalf("sigv4Escape = %q", got)
+	}
+	if got := sigv4Query(map[string]string{"b": "2", "A": "1", "X-Amz-Date": "x"}); got != "A=1&X-Amz-Date=x&b=2" {
+		t.Fatalf("sigv4Query ordering = %q", got)
 	}
 }
 
@@ -82,15 +93,13 @@ func (f bedrockTestTransport) RoundTrip(r *http.Request) (*http.Response, error)
 func isolateAWS(t *testing.T) {
 	t.Helper()
 	clearEnv(t)
-	for _, k := range []string{"AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI"} {
+	for _, k := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_CREDENTIAL_EXPIRATION",
+		"AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE"} {
 		t.Setenv(k, "")
 	}
-	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
-	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "config"))
-	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "credentials"))
 }
 
-func TestBedrockIAMProfile(t *testing.T) {
+func TestBedrockEnvCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		model, base, path string
 	}{
@@ -105,27 +114,27 @@ func TestBedrockIAMProfile(t *testing.T) {
 			t.Setenv("PGBOT_AI_PROVIDER", "bedrock")
 			t.Setenv("PGBOT_AI_MODEL", model)
 			t.Setenv("PGBOT_AI_BASE_URL", tc.base)
-			t.Setenv("AWS_PROFILE", "test-profile")
-			if err := os.WriteFile(os.Getenv("AWS_CONFIG_FILE"), []byte("[profile test-profile]\nregion = us-west-2\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = dummy-secret\naws_session_token = session/+= token\n"), 0600); err != nil {
-				t.Fatal(err)
-			}
+			t.Setenv("AWS_REGION", "us-west-2")
+			t.Setenv("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE")
+			t.Setenv("AWS_SECRET_ACCESS_KEY", "dummy-secret")
+			t.Setenv("AWS_SESSION_TOKEN", "session/+= token")
 			m, err := Resolve()
 			if err != nil {
 				t.Fatal(err)
 			}
 			var client *http.Client
-			header := "Authorization"
+			header, other := "Authorization", "x-api-key"
 			switch m := m.(type) {
 			case *responsesModel:
 				client = m.provider.HTTP
 			case *anthropicModel:
 				client = m.provider.HTTP
-				header = "x-api-key"
+				header, other = "x-api-key", "Authorization"
 			default:
 				t.Fatalf("unexpected model type %T", m)
 			}
 			if m.Provider() != "bedrock" || !strings.Contains(m.Endpoint(), "us-west-2") {
-				t.Fatal("profile region or provider label lost")
+				t.Fatal("region or provider label lost")
 			}
 			auth := client.Transport.(*bedrockAuth)
 			calls := 0
@@ -134,9 +143,13 @@ func TestBedrockIAMProfile(t *testing.T) {
 				if r.URL.Path != tc.path {
 					t.Errorf("incorrect API path: %s", r.URL.Path)
 				}
+				// The header follows the model family, never the URL path.
 				q := tokenQuery(t, strings.TrimPrefix(r.Header.Get(header), "Bearer "))
-				if !strings.Contains(q.Get("X-Amz-Credential"), "/us-west-2/bedrock/") {
-					t.Error("incorrect signing region")
+				if v := r.Header.Get(other); strings.Contains(v, "bedrock-api-key-") {
+					t.Errorf("token also sent in %s", other)
+				}
+				if !strings.Contains(q.Get("X-Amz-Credential"), "/us-west-2/bedrock/") || q.Get("X-Amz-Security-Token") != "session/+= token" {
+					t.Error("incorrect signing region or session token")
 				}
 				var body map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -171,7 +184,6 @@ func TestBedrockIAMProfile(t *testing.T) {
 func TestBedrockAuthConfiguration(t *testing.T) {
 	isolateAWS(t)
 	t.Setenv("PGBOT_AI_PROVIDER", "bedrock")
-	t.Setenv("AWS_PROFILE", "nonexistent")
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "bedrock-override")
 	t.Setenv("PGBOT_AI_API_KEY", "explicit-override")
 	m, err := Resolve()
@@ -180,7 +192,10 @@ func TestBedrockAuthConfiguration(t *testing.T) {
 	}
 	p := m.(*responsesModel).provider
 	if p.APIKey != "explicit-override" || p.HTTP.Transport != nil {
-		t.Fatal("explicit token must bypass IAM")
+		t.Fatal("an explicit token must be used as-is, with no minting transport")
+	}
+	if m.Model() != "openai."+defaultOpenAIModel || m.Endpoint() != "https://bedrock-mantle.us-east-1.api.aws/openai/v1" {
+		t.Fatalf("defaults: model=%s endpoint=%s", m.Model(), m.Endpoint())
 	}
 	t.Setenv("PGBOT_AI_API_KEY", "")
 	m, err = Resolve()
@@ -190,23 +205,42 @@ func TestBedrockAuthConfiguration(t *testing.T) {
 	if m.(*responsesModel).provider.APIKey != "bedrock-override" {
 		t.Fatal("Bedrock token override lost")
 	}
+
+	// No token and no access keys: say exactly what to set, and never touch a
+	// profile or the AWS config files.
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "")
-	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_PROFILE", "some-profile")
 	t.Setenv("OPENAI_API_KEY", "unrelated-key")
-	m, err = Resolve()
-	if err != nil {
-		t.Fatal(err)
+	_, err = Resolve()
+	if err == nil || !strings.Contains(err.Error(), "aws configure export-credentials") {
+		t.Fatalf("expected a missing-credentials error naming the export command, got %v", err)
 	}
-	if _, err = m.Generate(context.Background(), Call{Prompt: "hello"}); err == nil || !strings.Contains(err.Error(), "resolve AWS credentials") {
-		t.Fatalf("expected missing IAM credentials error, got %v", err)
-	}
+
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "dummy-secret")
 	t.Setenv("PGBOT_AI_BASE_URL", "https://example.com/openai/v1")
 	if _, err := Resolve(); err == nil {
-		t.Fatal("IAM authentication must reject non-Mantle endpoints")
+		t.Fatal("access keys must not be sent to a non-Mantle endpoint")
 	}
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("PGBOT_AI_BASE_URL", "https://bedrock-mantle.us-west-2.api.aws/openai/v1")
 	if _, err := Resolve(); err == nil {
-		t.Fatal("IAM region mismatch accepted")
+		t.Fatal("region mismatch accepted")
+	}
+
+	// AWS_CREDENTIAL_EXPIRATION (emitted by `aws configure export-credentials`)
+	// bounds the minted token; an unparseable value is refused rather than ignored.
+	t.Setenv("PGBOT_AI_BASE_URL", "")
+	t.Setenv("AWS_CREDENTIAL_EXPIRATION", "not-a-time")
+	if _, err := Resolve(); err == nil {
+		t.Fatal("malformed AWS_CREDENTIAL_EXPIRATION accepted")
+	}
+	t.Setenv("AWS_CREDENTIAL_EXPIRATION", time.Now().UTC().Add(-time.Minute).Format(time.RFC3339))
+	m, err = Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Generate(context.Background(), Call{Prompt: "hello"}); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("expired credentials should fail at token minting, got %v", err)
 	}
 }

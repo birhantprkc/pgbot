@@ -3,10 +3,11 @@
 // already-computed, PII-free Context and asks a model to explain and prioritize
 // it in plain language. Everything it emits is labeled as model-generated.
 //
-// The model is yours to choose: Gemini, Anthropic, OpenAI, or any OpenAI-compatible
-// endpoint (OpenRouter, Groq, Together, DeepSeek, xAI, Mistral, Ollama, vLLM,
-// LM Studio), plus AWS Bedrock Mantle. Inference uses net/http; AWS credential
-// resolution and signing use the AWS SDK.
+// The model is yours to choose: Gemini, Anthropic, OpenAI, AWS Bedrock Mantle, or
+// any OpenAI-compatible endpoint (OpenRouter, Groq, Together, DeepSeek, xAI,
+// Mistral, Ollama, vLLM, LM Studio). Each provider is a few hundred lines of
+// net/http so pgbot keeps its single-static-binary, minimal-dependency promise —
+// no vendor SDKs. Even Bedrock's SigV4 token is a hundred lines of HMAC (bedrock.go).
 package ai
 
 import (
@@ -18,8 +19,13 @@ import (
 
 // Provider is a named source of language models.
 //
-// Providers use net/http for inference. Bedrock additionally uses the AWS SDK
-// for its credential chain and SigV4 signing; it reuses the same wire clients.
+// This mirrors charmbracelet/fantasy's Provider/LanguageModel pair on purpose, so
+// a fantasy-backed implementation could drop in later — but we implement it over
+// net/http instead of depending on fantasy, which pulls the real vendor SDKs
+// (anthropic-sdk-go, openai-go, google.golang.org/genai, aws-sdk-go-v2) and takes
+// the binary from 23 MB to ~65 MB for one non-streaming POST (aws-sdk-go-v2 alone
+// measured +3 MB and 14 modules). The interface is narrowed to the single call
+// pgbot makes: one system turn, one user turn, no tools, no streaming.
 type Provider interface {
 	Name() string
 	LanguageModel(ctx context.Context, modelID string) (LanguageModel, error)

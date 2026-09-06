@@ -10,8 +10,9 @@ import (
 )
 
 // Resolve builds the model to use from the environment. Keys come ONLY from the
-// environment (or the AWS credential chain for Bedrock), never a flag, so they
-// cannot leak into shell history or the process list.
+// environment — never a flag, never a config file — so they can't leak into shell
+// history or the process list. That invariant is enforced here, once, for every
+// provider; Bedrock's AWS access keys are environment variables like any other.
 //
 // Precedence:
 //

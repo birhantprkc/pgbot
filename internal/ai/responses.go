@@ -15,8 +15,15 @@ const (
 	defaultXAIURL   = "https://api.x.ai/v1"
 )
 
-// ResponsesProvider speaks POST /responses for xAI, OpenAI, and Bedrock Mantle.
-// OpenAIProvider remains the /chat/completions compatibility path.
+// ResponsesProvider speaks the Responses API (POST /responses) — the newer
+// surface both xAI and OpenAI prefer over /chat/completions. pgbot uses it for
+// xAI, where it is the documented primary interface, and for OpenAI models on
+// Bedrock Mantle.
+//
+// It is deliberately NOT the default for the OpenAI-compatible world: only
+// OpenAI, xAI and Mantle implement /responses, while Ollama, vLLM, LM Studio,
+// Groq, Together, DeepSeek and Mistral implement only /chat/completions. This
+// provider is additive — OpenAIProvider stays the compatibility path.
 type ResponsesProvider struct {
 	APIKey  string
 	BaseURL string
@@ -64,7 +71,7 @@ type responsesRequest struct {
 	// Store is explicitly false. The Responses API defaults it to TRUE, which
 	// retains the request server-side for later retrieval — a quiet downgrade of
 	// the disclosure `pgbot explain` asks the user to consent to. We send the
-	// findings without enabling stored conversation state.
+	// findings once and keep nothing on the vendor's side.
 	Store           bool          `json:"store"`
 	MaxOutputTokens *int64        `json:"max_output_tokens,omitempty"`
 	Temperature     *float64      `json:"temperature,omitempty"`
