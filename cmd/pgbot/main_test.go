@@ -40,6 +40,7 @@ func TestDsnFromArgs(t *testing.T) {
 	// Falls back to $DATABASE_URL when no argument is given.
 	t.Setenv("DATABASE_URL", "postgres://env")
 	t.Setenv("PGBOT_DATABASE_URL", "")
+	t.Setenv("PGSERVICE", "")
 	if dsn, err := dsnFromArgs(json.RawMessage(`{}`)); err != nil || dsn != "postgres://env" {
 		t.Errorf("env fallback not honored: %q, %v", dsn, err)
 	}
@@ -47,8 +48,34 @@ func TestDsnFromArgs(t *testing.T) {
 	// No argument and no env is a clear error, not an empty string.
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("PGBOT_DATABASE_URL", "")
+	t.Setenv("PGSERVICE", "")
 	if _, err := dsnFromArgs(json.RawMessage(`{}`)); err == nil {
 		t.Error("missing DSN everywhere should be an error")
+	}
+}
+
+func TestPgServiceFallback(t *testing.T) {
+	t.Setenv("PGSERVICE", "")
+	if got := pgServiceFallback(); got != "" {
+		t.Errorf("no $PGSERVICE should fall back to empty, got %q", got)
+	}
+
+	t.Setenv("PGSERVICE", "mydb")
+	if got := pgServiceFallback(); got != "service=mydb" {
+		t.Errorf("pgServiceFallback = %q, want %q", got, "service=mydb")
+	}
+
+	// A bare $PGSERVICE resolves a connection when nothing else is set —
+	// pgx's ParseConfig reads PGSERVICE(FILE) itself once it sees "service=...".
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("PGBOT_DATABASE_URL", "")
+	if dsn, err := dsnFromArgs(json.RawMessage(`{}`)); err != nil || dsn != "service=mydb" {
+		t.Errorf("PGSERVICE fallback not honored: %q, %v", dsn, err)
+	}
+
+	// An explicit argument still wins over $PGSERVICE.
+	if dsn, err := dsnFromArgs(json.RawMessage(`{"connection_string":"postgres://arg"}`)); err != nil || dsn != "postgres://arg" {
+		t.Errorf("arg should outrank $PGSERVICE: %q, %v", dsn, err)
 	}
 }
 

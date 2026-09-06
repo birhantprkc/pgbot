@@ -7,6 +7,15 @@ separately by `model.SchemaVersion` (currently 1.2.0).
 
 ## [Unreleased]
 
+### Added
+- **`$PGSERVICE` as a connection fallback** (#25). When no connection string
+  is passed and neither `$DATABASE_URL` nor `$PGBOT_DATABASE_URL` is set,
+  pgbot now checks `$PGSERVICE` too, so a
+  [connection service file](https://www.postgresql.org/docs/current/libpq-pgservice.html)
+  alone is enough to pick a database. pgx's `ParseConfig` already reads
+  `PGSERVICEFILE` (or the libpq default path); this just stops pgbot from
+  erroring out before pgx gets a chance to.
+
 ## [0.8.1] - 2026-09-06
 
 ### Fixed

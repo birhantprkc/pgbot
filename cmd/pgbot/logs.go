@@ -63,7 +63,7 @@ output shows log lines verbatim; --json scrubs literals (the machine contract).`
 }
 
 func runLogs(cmd *cobra.Command, args []string, f logsFlags) error {
-	connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+	connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 	if connString == "" {
 		return fmt.Errorf("no connection string (pass one or set $DATABASE_URL)")
 	}

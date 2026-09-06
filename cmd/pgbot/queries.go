@@ -36,7 +36,7 @@ func newQueriesCmd() *cobra.Command {
 }
 
 func runQueries(cmd *cobra.Command, args []string, f inspectFlags, byCalls bool) error {
-	connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+	connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 	if connString == "" {
 		return fmt.Errorf("no connection string (pass one or set $DATABASE_URL)")
 	}

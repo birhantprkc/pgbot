@@ -53,7 +53,10 @@ export DATABASE_URL="postgres://pgbot_ro@host:5432/db"
 pgbot inspect
 ```
 
-pgbot reads the argument first, then `$DATABASE_URL`, then `$PGBOT_DATABASE_URL`.
+pgbot reads the argument first, then `$DATABASE_URL`, then `$PGBOT_DATABASE_URL`,
+then `$PGSERVICE` (if you keep your connections in a
+[connection service file](https://www.postgresql.org/docs/current/libpq-pgservice.html),
+just `export PGSERVICE=mydb` and drop the argument too).
 (Shell note: `export DATABASE_URL="…"` — no `$` on the left, no spaces around `=`.)
 
 Everything pgbot takes from the environment fits in one block — the connection,
@@ -218,7 +221,7 @@ carried into the advice, not lost.
 ## Commands and flags
 
 Every command takes the connection the same way — an argument, `$DATABASE_URL`,
-or `$PGBOT_DATABASE_URL`.
+`$PGBOT_DATABASE_URL`, or `$PGSERVICE`.
 
 | Command | What it does |
 |---|---|
@@ -426,7 +429,7 @@ one SSH connection serves the whole run. Raise `--timeout` if the link is slow.
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` / `PGBOT_DATABASE_URL` | Connection used when no connection string is passed (checked in that order, after the argument). |
+| `DATABASE_URL` / `PGBOT_DATABASE_URL` / `PGSERVICE` | Connection used when no connection string is passed (checked in that order, after the argument). `PGSERVICE` picks a `[section]` from your [connection service file](https://www.postgresql.org/docs/current/libpq-pgservice.html) (`PGSERVICEFILE`, or the libpq default path). |
 | `NO_COLOR` | Disables ANSI output (as does a non-TTY, or `--no-color`). |
 | `XDG_STATE_HOME` | Where the baseline store lives; defaults to `~/.local/state`. |
 | `PGBOT_SSH_TUNNEL` | SSH jump host used when `--ssh-tunnel` isn't passed (`[user@]host[:port]`, or a `~/.ssh/config` alias). |
