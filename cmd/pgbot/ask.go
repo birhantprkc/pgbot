@@ -51,7 +51,7 @@ func runAsk(cmd *cobra.Command, question, url string, f inspectFlags, yes bool) 
 		return fmt.Errorf("aborted")
 	}
 
-	connString := firstNonEmpty(url, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+	connString := firstNonEmpty(url, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 	if connString == "" {
 		return fmt.Errorf("no connection string (pass --url or set $DATABASE_URL)")
 	}

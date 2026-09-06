@@ -200,7 +200,7 @@ func whyArgIsDSN(s string) bool {
 // store, and merges with the offline history analysis when snapshots exist.
 // The offline path — `pgbot why` without --duration — is untouched.
 func runWhyLive(ctx context.Context, w io.Writer, f whyFlags, dsnArg string) error {
-	connString := firstNonEmpty(dsnArg, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+	connString := firstNonEmpty(dsnArg, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 	if connString == "" {
 		return fmt.Errorf("--duration samples the live database: pass a connection string or set $DATABASE_URL")
 	}

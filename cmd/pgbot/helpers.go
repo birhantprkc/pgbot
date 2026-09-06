@@ -24,6 +24,19 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+// pgServiceFallback lets a bare $PGSERVICE select a connection when neither an
+// argument nor $DATABASE_URL/$PGBOT_DATABASE_URL is set. pgx's ParseConfig
+// already reads a connection service file (PGSERVICEFILE, or the libpq
+// default path) once it gets a "service=..." string — this just builds that
+// string so users who manage connections through a service file don't have
+// to also pass one explicitly.
+func pgServiceFallback() string {
+	if svc := os.Getenv("PGSERVICE"); svc != "" {
+		return "service=" + svc
+	}
+	return ""
+}
+
 // isInteractive reports whether stdin is a terminal — used to decide whether to
 // prompt for confirmation (skip the prompt when piped/scripted).
 func isInteractive() bool {

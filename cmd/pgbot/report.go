@@ -23,7 +23,7 @@ func newReportCmd() *cobra.Command {
 		Short: "Full inspection as one self-contained HTML page: pgbot report > report.html",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+			connString := firstNonEmpty(argAt(args, 0), os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 			if connString == "" {
 				return fmt.Errorf("no connection string (pass one or set $DATABASE_URL)")
 			}

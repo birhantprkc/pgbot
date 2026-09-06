@@ -279,7 +279,7 @@ func dsnFromArgs(args json.RawMessage) (string, error) {
 		ConnectionString string `json:"connection_string"`
 	}
 	_ = json.Unmarshal(args, &a)
-	dsn := firstNonEmpty(a.ConnectionString, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"))
+	dsn := firstNonEmpty(a.ConnectionString, os.Getenv("DATABASE_URL"), os.Getenv("PGBOT_DATABASE_URL"), pgServiceFallback())
 	if dsn == "" {
 		return "", fmt.Errorf("no connection string: pass connection_string or set $DATABASE_URL for the server")
 	}
