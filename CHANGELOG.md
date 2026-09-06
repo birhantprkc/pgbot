@@ -42,11 +42,12 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   cap. An existing setup with only `OPENAI_API_KEY` picks this up without any
   other change — set `PGBOT_OPENAI_MODEL` (or `PGBOT_AI_MODEL`) to keep the old
   model, or `PGBOT_AI_REASONING_EFFORT=low` to keep the cost down.
-- **Builds with Go 1.26.** `golang.org/x/crypto` v0.56.0 — the first release
+- **Builds with Go 1.27.** `golang.org/x/crypto` v0.56.0 — the first release
   clearing the advisories `govulncheck` reports against the SSH package — needs
-  Go 1.26, so `go.mod` moves from 1.25.13 to 1.26.8. With the default
-  `GOTOOLCHAIN=auto` the right toolchain is fetched on first build; CI and the
-  release pipeline already read the version from `go.mod`.
+  Go 1.26 or newer, so `go.mod` moves from 1.25.13 to `go 1.27` with
+  `toolchain go1.27.1`. Developers and CI get exactly 1.27.1 through the
+  default `GOTOOLCHAIN=auto`; a packager with any 1.27.x can build. The release
+  pipeline already reads the version from `go.mod`.
 
 ### Fixed
 - **`pgbot tune --timeout`** (#26, #30, contributed by @YIKUAIBANZI). `tune` ran
