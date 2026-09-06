@@ -7,6 +7,8 @@ separately by `model.SchemaVersion` (currently 1.2.0).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-06
+
 ### Added
 - **Bring your own model: Gemini, Anthropic, OpenAI, xAI, or any
   OpenAI-compatible endpoint for `explain` and `ask`** (#29, contributed by
@@ -615,6 +617,7 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   1.25.13, and golang.org/x/text to v0.39.0; `govulncheck` now runs in CI and
   reports no vulnerabilities.
 
+[0.8.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.8.0
 [0.7.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.2
 [0.7.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.1
 [0.7.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.0
