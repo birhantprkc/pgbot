@@ -47,30 +47,18 @@ checksum:
 # checksum lets the paranoid verify provenance.
 signs:
   # A self-contained cosign bundle (cert + signature + rekor entry in one file).
-  # The installer verifies it with `cosign verify-blob --bundle`, so it no longer
-  # depends on the --certificate/--signature flags cosign v3 has deprecated. This
-  # is the preferred path.
+  # The installer, the README, and the release smoke job all verify it with
+  # `cosign verify-blob --bundle`. This is the only signing output: cosign v3
+  # (installed by cosign-installer v4) ignores --output-signature /
+  # --output-certificate and fails without a bundle path, which is what took
+  # the v0.8.0 release down — the detached .sig/.pem pair that shipped alongside
+  # the bundle through 0.7.2 as a transition aid is gone.
   - id: cosign-bundle
     cmd: cosign
     signature: "${artifact}.cosign.bundle"
     args:
       - sign-blob
       - "--bundle=${signature}"
-      - "--yes"
-      - "${artifact}"
-    artifacts: checksum
-    output: true
-  # Detached certificate + signature, kept for one transition release so an older
-  # cosign (or a bundle fetch that fails) still verifies via the installer's
-  # fallback. Can be dropped once the bundle has shipped.
-  - id: cosign-detached
-    cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
-    args:
-      - sign-blob
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
       - "--yes"
       - "${artifact}"
     artifacts: checksum

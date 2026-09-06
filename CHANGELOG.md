@@ -7,6 +7,17 @@ separately by `model.SchemaVersion` (currently 1.2.0).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-06
+
+### Fixed
+- **Release signing under cosign v3.** The v0.8.0 tag's release run failed at
+  the signing step and published nothing: cosign-installer v4 (#19) installs
+  cosign v3, which ignores `--output-signature` / `--output-certificate` and
+  requires a bundle path, so the transitional detached `.sig`/`.pem` signing
+  entry failed. Releases now ship the `checksums.txt.cosign.bundle` only, which
+  is what `install.sh`, the README, and the release smoke job already verify
+  with `cosign verify-blob --bundle`. 0.8.1 is the 0.8.0 tree plus this fix.
+
 ## [0.8.0] - 2026-09-06
 
 ### Added
@@ -617,6 +628,7 @@ separately by `model.SchemaVersion` (currently 1.2.0).
   1.25.13, and golang.org/x/text to v0.39.0; `govulncheck` now runs in CI and
   reports no vulnerabilities.
 
+[0.8.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.8.1
 [0.8.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.8.0
 [0.7.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.2
 [0.7.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.1
