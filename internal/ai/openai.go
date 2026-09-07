@@ -85,7 +85,8 @@ func reasoningModel(id string) bool {
 	if i := strings.LastIndex(id, "/"); i >= 0 { // strip an "openai/" vendor prefix
 		id = id[i+1:]
 	}
-	for _, p := range []string{"gpt-5", "o1", "o3", "o4"} {
+	id = strings.TrimPrefix(id, "openai.") // Bedrock model IDs
+	for _, p := range []string{"gpt-5", "gpt-6", "o1", "o3", "o4"} {
 		if strings.HasPrefix(id, p) {
 			return true
 		}

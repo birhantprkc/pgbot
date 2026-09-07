@@ -438,7 +438,8 @@ one SSH connection serves the whole run. Raise `--timeout` if the link is slow.
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Enables `ask` / `explain` via Google Gemini. |
 | `ANTHROPIC_API_KEY` | Enables `ask` / `explain` via Anthropic. |
 | `XAI_API_KEY` / `GROK_API_KEY` | Enables `ask` / `explain` via xAI. |
-| `PGBOT_AI_PROVIDER` | `gemini`, `anthropic`, `openai`, or `xai` — picks one when several keys are set (auto-detection tries OpenAI first). |
+| `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Enables `ask` / `explain` via AWS Bedrock Mantle with `PGBOT_AI_PROVIDER=bedrock` (never auto-detected). `AWS_REGION` picks the endpoint; `AWS_CREDENTIAL_EXPIRATION` bounds the minted token. |
+| `PGBOT_AI_PROVIDER` | `gemini`, `anthropic`, `openai`, `xai`, or `bedrock` (alias `mantle`) — picks one when several keys are set (auto-detection tries OpenAI first). |
 | `PGBOT_AI_MODEL` / `PGBOT_AI_BASE_URL` / `PGBOT_AI_API_KEY` | Model, endpoint, and key override for whichever provider is selected; the way to reach an OpenAI-compatible service (OpenRouter, Groq, Ollama, vLLM, …). |
 | `PGBOT_AI_REASONING_EFFORT` | `none`, `low`, `medium`, `high`, `xhigh`, or `max` for reasoning models (OpenAI's default here is `xhigh`). |
 | `PGBOT_OPENAI_MODEL` / `PGBOT_OPENAI_URL` | Still honored: OpenAI-scoped model/endpoint override. |
@@ -683,6 +684,7 @@ not require confirmation.
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-opus-5` | `/v1/messages` |
 | OpenAI | `OPENAI_API_KEY` | `gpt-5.6-terra` | `/chat/completions` |
 | xAI | `XAI_API_KEY` / `GROK_API_KEY` | `grok-4.6` | `/responses` |
+| Bedrock Mantle | `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `openai.gpt-5.6-terra` | Responses (GPT) / Messages (Claude) |
 
 The OpenAI provider also supports compatible services such as OpenRouter,
 Groq, Together, DeepSeek, Mistral, Ollama, vLLM, and LM Studio.
@@ -697,6 +699,50 @@ Use `PGBOT_AI_PROVIDER` to select a provider explicitly. `PGBOT_AI_MODEL`,
 override its defaults. Existing `PGBOT_GEMINI_MODEL` and `PGBOT_GEMINI_URL`
 and `PGBOT_OPENAI_MODEL` and `PGBOT_OPENAI_URL` settings remain supported. Keys
 are read only from environment variables.
+
+For AWS Bedrock Mantle, select `bedrock` (or its alias `mantle`) and give pgbot
+AWS credentials the same way you give it any other key — through the environment.
+No AWS SDK, no config files read, no calls to STS or instance metadata: pgbot
+mints Bedrock's bearer token itself from the standard three variables.
+
+```sh
+export PGBOT_AI_PROVIDER=bedrock
+export AWS_REGION=us-east-1
+# a profile, an SSO login, or an assumed role becomes the three variables:
+eval "$(aws configure export-credentials --profile your-profile --format env)"
+pgbot ask "What needs attention?" "$DATABASE_URL"
+
+# Claude uses the Anthropic Messages API automatically:
+export PGBOT_AI_MODEL=anthropic.claude-sonnet-5
+pgbot ask "What needs attention?" "$DATABASE_URL"
+```
+
+Authentication precedence is `PGBOT_AI_API_KEY`, then `AWS_BEARER_TOKEN_BEDROCK`
+(a Bedrock API key from the console), then `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` (plus `AWS_SESSION_TOKEN` for temporary credentials).
+An explicit token is sent as-is. From access keys pgbot mints a fresh bearer
+token per request, valid for at most 15 minutes and never past
+`AWS_CREDENTIAL_EXPIRATION` when that is set (the export command sets it).
+`AWS_PROFILE` on its own does not authenticate — export it as above.
+
+Region precedence is `AWS_REGION`, `AWS_DEFAULT_REGION`, then `us-east-1`. The
+default model is `openai.gpt-5.6-terra`. OpenAI GPT models use
+`https://bedrock-mantle.<region>.api.aws/openai/v1` and the Responses API, as
+documented by
+[AWS for OpenAI GPT models](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/);
+models beginning with `anthropic.` use
+`https://bedrock-mantle.<region>.api.aws/anthropic` and the Messages API. Set
+`PGBOT_AI_MODEL` to the exact Bedrock model ID available to your account and
+region, including for GPT-6 models. `PGBOT_AI_BASE_URL` overrides the base URL,
+without the final `/responses` or `/v1/messages`. Access keys are only ever sent
+to the Mantle HTTPS host for the configured region, and Bedrock requests never
+follow redirects.
+
+Responses requests set `store=false`, omit sampling temperature for GPT-5/6
+reasoning models, and allow at least 32,000 output tokens (including hidden
+reasoning). `PGBOT_AI_REASONING_EFFORT` is optional for Responses; when unset,
+the service chooses its default. Claude keeps the existing Messages request
+shape. Neither protocol retries inference automatically.
 
 **Exit codes** (a stable contract for CI): `0` clean · `1` warnings · `2` critical
 findings · `3` connection/execution failure · `64` usage error (bad flags/args).
@@ -1128,8 +1174,11 @@ package is scoped. Use `npx @pgbot/cli`.
 Nothing leaves the machine unless you ask for it: every command except the AI
 layer is entirely local. The only commands that make an outbound call are `pgbot
 explain` and `pgbot ask`, which send the same PII-free Context to your configured
-model — Gemini, Anthropic, OpenAI, xAI, or an OpenAI-compatible endpoint — and
-say so, naming the provider, host, and model, with a confirmation prompt. A
+model — Gemini, Anthropic, OpenAI, xAI, AWS Bedrock Mantle, or an
+OpenAI-compatible endpoint — and say so, naming the provider, host, and model,
+with a confirmation prompt. Bedrock's token is minted locally from your
+environment credentials; pgbot never reads AWS config files or calls STS or
+instance metadata. A
 local endpoint (Ollama, vLLM, LM Studio on this machine) is identified as local
 and sends nothing off the box.
 

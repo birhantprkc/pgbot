@@ -17,19 +17,20 @@ const (
 
 // ResponsesProvider speaks the Responses API (POST /responses) — the newer
 // surface both xAI and OpenAI prefer over /chat/completions. pgbot uses it for
-// xAI, where it is the documented primary interface.
+// xAI, where it is the documented primary interface, and for OpenAI models on
+// Bedrock Mantle.
 //
 // It is deliberately NOT the default for the OpenAI-compatible world: only
-// OpenAI and xAI implement /responses, while Ollama, vLLM, LM Studio, Groq,
-// Together, DeepSeek and Mistral implement only /chat/completions. This provider
-// is additive — OpenAIProvider stays the compatibility path.
+// OpenAI, xAI and Mantle implement /responses, while Ollama, vLLM, LM Studio,
+// Groq, Together, DeepSeek and Mistral implement only /chat/completions. This
+// provider is additive — OpenAIProvider stays the compatibility path.
 type ResponsesProvider struct {
 	APIKey  string
 	BaseURL string
 	HTTP    *http.Client
 
 	// Label is the provider name shown in the consent prompt and AI banner
-	// ("xai", "openai") — the endpoint is shared, the vendor is not.
+	// ("xai", "openai", "bedrock") — the endpoint is shared, the vendor is not.
 	Label string
 
 	// ReasoningEffort is sent as reasoning.effort when set. Left empty by default
@@ -114,6 +115,9 @@ func (m *responsesModel) Generate(ctx context.Context, c Call) (*Response, error
 		Store:           false,
 		MaxOutputTokens: &limit,
 		Temperature:     c.Temperature,
+	}
+	if reasoningModel(m.model) {
+		reqBody.Temperature = nil
 	}
 	if e := m.provider.ReasoningEffort; e != "" {
 		reqBody.Reasoning = &reasoningCfg{Effort: e}
