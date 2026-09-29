@@ -260,6 +260,7 @@ Key `inspect` flags:
 | `--profile=full\|schema` | `schema` runs only catalog-derived findings — safe on an empty CI database |
 | `--fail-on-new <base.json>` | act only on findings not already in a base report (migration PRs) |
 | `--all-databases` | inspect every database in the cluster; cluster-wide findings reported once |
+| `--all-instances` | Aurora (experimental): discover every writer and reader instance behind the cluster endpoint and inspect each; composes with `--all-databases` |
 | `--config <path>` | a `.pgbot.toml` for thresholds, severity remaps, and `[[ignore]]` rules |
 
 Exit codes are a scriptable contract: `0` clean · `1` warn · `2` critical · `3`
@@ -1099,7 +1100,8 @@ pgbot inspect "$DATABASE_URL" --format=prometheus > /var/lib/node_exporter/pgbot
 mv /var/lib/node_exporter/pgbot.prom.$$ /var/lib/node_exporter/pgbot.prom   # atomic
 ```
 
-Under `--all-databases`, each database's series carry a `database="…"` label.
+Under `--all-databases`, each database's series carry a `database="…"` label;
+under `--all-instances`, `instance="…"` and `role="writer|reader"` as well.
 
 ## The findings catalogue
 

@@ -13,4 +13,8 @@ package model
 //
 // 1.3.0: additive only — Context gains the `collation` section (collation version
 // drift, PG15+). A 1.2.0 consumer still parses 1.3.0 output.
-const SchemaVersion = "1.3.0"
+//
+// 1.4.0: additive only — ServerInfo gains instance/instance_role, naming the
+// cluster member a report came from under --all-instances. Both are omitted on a
+// single-instance run, so a 1.3.0 consumer still parses 1.4.0 output.
+const SchemaVersion = "1.4.0"

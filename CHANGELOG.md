@@ -31,6 +31,21 @@ separately by `model.SchemaVersion` (currently 1.3.0).
   is REINDEX **then** `REFRESH COLLATION VERSION`, in that order — the caveat
   says why. New `collation` section in `--json`; `SchemaVersion` → **1.3.0**
   (additive; a 1.2.0 consumer parses it unchanged).
+- **`pgbot inspect --all-instances` — every Aurora writer and reader behind one
+  endpoint (experimental)** (#23). An Aurora cluster endpoint stands for several
+  instances; this discovers the members with `aurora_replica_status()`, derives
+  each instance endpoint from the cluster endpoint's DNS name (custom domains
+  are followed through their CNAME), verifies each derived endpoint reached the
+  member it names with `aurora_db_instance_identifier()` before collecting, and
+  inspects every one through the existing fan-out — writer first, then readers,
+  composing with `--all-databases`. SQL and DNS only: no AWS credentials, CLI,
+  SDK, or API. An RDS Proxy endpoint, a non-RDS name, or an unreachable member
+  fails loudly rather than guessing; missing members mean partial coverage and
+  exit 3. Text output banners each target, JSON carries `server.instance` and
+  `server.instance_role`, SARIF/JUnit objects are prefixed `instance:<id>/`, and
+  Prometheus series gain `instance` and `role` labels. `SchemaVersion` →
+  **1.4.0** (additive; a 1.3.0 consumer parses it unchanged). Needs validation on a
+  real cluster — please report the cluster endpoint shape if derivation fails.
 - **`$PGSERVICE` as a connection fallback** (#25). When no connection string
   is passed and neither `$DATABASE_URL` nor `$PGBOT_DATABASE_URL` is set,
   pgbot now checks `$PGSERVICE` too, so a
@@ -52,6 +67,10 @@ separately by `model.SchemaVersion` (currently 1.3.0).
   ever go to the Mantle host for the configured region, and Bedrock requests
   never follow redirects.
 
+### Changed
+- `model.ServerInfo` gains `instance` and `instance_role` (additive). JSON
+  contract `SchemaVersion` → **1.3.0**; a 1.2.0 consumer still parses 1.3.0
+  output unchanged.
 ### Fixed
 - **Connection-string redaction now covers `?password=` in URL form.** libpq
   accepts the password as a query parameter as well as in the userinfo; the

@@ -44,12 +44,33 @@ func Connect(ctx context.Context, connString string) (*Target, error) {
 // the connString supplies host/auth/TLS and `database` names which database on
 // that server to inspect. Empty database keeps the connString's own.
 func ConnectDB(ctx context.Context, connString, database string) (*Target, error) {
+	return connect(ctx, connString, database, "")
+}
+
+// ConnectDBAt is ConnectDB with the host overridden as well (for
+// --all-instances): the connString supplies auth and TLS settings, `host` names
+// which cluster member to reach. The TLS server name follows the host, so
+// sslmode=verify-full validates that member's own certificate.
+func ConnectDBAt(ctx context.Context, connString, database, host string) (*Target, error) {
+	return connect(ctx, connString, database, host)
+}
+
+func connect(ctx context.Context, connString, database, host string) (*Target, error) {
 	cfg, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("parse connection string: %w", err)
 	}
 	if database != "" {
 		cfg.ConnConfig.Database = database
+	}
+	if host != "" {
+		cfg.ConnConfig.Host = host
+		cfg.ConnConfig.Fallbacks = nil // a multi-host DSN names the cluster, not this member
+		if tc := cfg.ConnConfig.TLSConfig; tc != nil {
+			tc = tc.Clone()
+			tc.ServerName = host
+			cfg.ConnConfig.TLSConfig = tc
+		}
 	}
 	cfg.MaxConns = maxConns
 	cfg.MinConns = 0
@@ -229,11 +250,14 @@ func probe(ctx context.Context, cc *pgx.ConnConfig) (Capabilities, PoolerInfo, u
 		       (SELECT count(*) FROM pg_settings WHERE name LIKE 'cloudsql.%') > 0,
 		       (SELECT count(*) FROM pg_settings WHERE name LIKE 'azure.%') > 0,
 		       pg_is_in_recovery(),
-		       -- Aurora exposes aurora_version(). Look it up in the catalog rather
-		       -- than CALLING it: on every other server the call fails, which writes
-		       -- an ERROR to the server log and books a rollback in pg_stat_database
-		       -- on each pgbot run — the very counter pgbot reports.
-		       (SELECT count(*) FROM pg_proc WHERE proname = 'aurora_version') > 0`
+		       -- Aurora exposes aurora_version() and aurora_replica_status(), but does
+		       -- not catalogue them in pg_proc on every release (confirmed missing on
+		       -- 18.3). Resolve them by signature rather than CALLING them: a call
+		       -- fails on every other server, which writes an ERROR to the server log
+		       -- and books a rollback in pg_stat_database on each pgbot run — the very
+		       -- counter pgbot reports. to_regprocedure does neither.
+		       to_regprocedure('aurora_version()') IS NOT NULL
+		         OR to_regprocedure('aurora_replica_status()') IS NOT NULL`
 	err = c.QueryRow(ctx, q, mode...).Scan(&caps.VersionNum, &caps.VersionText, &caps.Database,
 		&caps.StartedAt, &caps.HasStatStatements, &caps.HasHypopg, &caps.HasPgMonitor,
 		&mk.HasRDS, &mk.HasCloudSQL, &mk.HasAzure, &caps.InRecovery, &mk.IsAurora)
